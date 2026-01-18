@@ -60,16 +60,17 @@ while True:
         
         aspect_ratio = float(w) / h
         if area > 300 and circularity > MIN_CIRCULARITY and 0.6 < aspect_ratio < 1.4:
-            
+            M = cv2.moments(c)
+            if M["m00"] != 0:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                center = (cX, cY)
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            center = (int(x + w / 2), int(y + h / 2))
+            cv2.circle(frame, center, 5, (255, 0, 0), -1)
             
-            label = f"Circ: {circularity:.2f}"
-            cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        
-        else:
-        
-            pass
+            coord_text = f"({cX}, {cY})"
+            cv2.putText(frame, coord_text, (cX - 20, cY - 20), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
     pts.appendleft(center)
 
