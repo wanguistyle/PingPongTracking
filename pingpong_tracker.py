@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from collections import deque
 
-BUFFER_SIZE = 32
+BUFFER_SIZE = 20
 MIN_CIRCULARITY = 0.5  # 1.0 serait un cercle parfait => engendre des diffculés lorsque la balle va trop vite
 
 pts = deque(maxlen=BUFFER_SIZE)
