@@ -6,3 +6,8 @@ Adding algorithms in the database for searching new programs : https://github.co
 This one for live streaming fluxes on video
 
 https://www.youtube.com/watch?v=sd25t4HmFdU&t=265s
+
+
+## YOLO model
+
+https://datacorner.fr/yolo-custom-1/?_gl=1*qpe0s5*_ga*MTg1NjYxMDk4NC4xNzY4ODI0OTIx*_ga_RXP3T9KBWC*czE3Njg4MjQ5MjAkbzEkZzEkdDE3Njg4MjQ5ODYkajYwJGwwJGgw
