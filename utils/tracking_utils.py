@@ -1,39 +1,32 @@
 import cv2
 import numpy as np
+import mediapipe as mp
 from collections import deque
 
 class TableDetector:
     def __init__(self, reference_image_path, min_match_count=10):
         self.min_match_count = min_match_count
         self.sift = cv2.SIFT_create()
-        
         self.img_base = cv2.imread(reference_image_path, 0)
         if self.img_base is None:
             raise ValueError(f"Could not load image at {reference_image_path}")
-            
         self.kp_base, self.des_base = self.sift.detectAndCompute(self.img_base, None)
-        
         index_params = dict(algorithm=1, trees=5)
         search_params = dict(checks=50)
         self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
 
     def process(self, frame):
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        # Calculate keypoints for the current frame
         kp_frame, des_frame = self.sift.detectAndCompute(gray_frame, None)
 
         if des_frame is None or len(des_frame) < 2:
             return frame
 
         matches = self.matcher.knnMatch(self.des_base, des_frame, k=2)
-
         good = [m for m, n in matches if m.distance < 0.7 * n.distance]
 
         if len(good) > self.min_match_count:
             src_pts = np.float32([self.kp_base[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-            
-            # FIXED: Used 'kp_frame' directly instead of 'self.kp_frame'
             dst_pts = np.float32([kp_frame[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
             M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
@@ -42,18 +35,18 @@ class TableDetector:
                 h, w = self.img_base.shape
                 pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
                 dst = cv2.perspectiveTransform(pts, M)
-                
                 cv2.polylines(frame, [np.int32(dst)], True, (255, 0, 0), 3, cv2.LINE_AA)
-                cv2.putText(frame, "Table Locked", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
         
         return frame
 
 class BallTracker:
-    def __init__(self, buffer_size=20, window_name="Smart Tracker"):
+    def __init__(self, buffer_size=20, max_jump_dist=200, window_name="Smart Tracker"):
         self.pts = deque(maxlen=buffer_size)
         self.window_name = window_name
         self.min_circularity = 0.5
-        
+        self.max_jump_dist = max_jump_dist
+        self.last_center = None 
+
     def setup_trackbars(self):
         def nothing(x): pass
         cv2.createTrackbar("Lower Hue", self.window_name, 5, 179, nothing)
@@ -80,23 +73,38 @@ class BallTracker:
 
         contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         center = None
-
-        if len(contours) > 0:
-            c = max(contours, key=cv2.contourArea)
-            perimeter = cv2.arcLength(c, True)
+        
+        valid_candidates = []
+        for c in contours:
             area = cv2.contourArea(c)
+            if area < 300: continue
+            
+            perimeter = cv2.arcLength(c, True)
+            if perimeter == 0: continue
+            circularity = 4 * np.pi * (area / (perimeter * perimeter))
+            x, y, w, h = cv2.boundingRect(c)
+            aspect = w / float(h)
+            
+            if circularity > self.min_circularity and 0.6 < aspect < 1.4:
+                M = cv2.moments(c)
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                
+                if self.last_center is not None:
+                    dist = np.linalg.norm(np.array((cX, cY)) - np.array(self.last_center))
+                    if dist < self.max_jump_dist:
+                        valid_candidates.append((c, (cX, cY), area))
+                else:
+                    valid_candidates.append((c, (cX, cY), area))
 
-            if perimeter > 0:
-                circularity = 4 * np.pi * (area / (perimeter * perimeter))
-                x, y, w, h = cv2.boundingRect(c)
-                aspect = w / float(h)
-
-                if area > 300 and circularity > self.min_circularity and 0.6 < aspect < 1.4:
-                    M = cv2.moments(c)
-                    center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-                    
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    cv2.circle(frame, center, 5, (255, 0, 0), -1)
+        if len(valid_candidates) > 0:
+            c, center, _ = max(valid_candidates, key=lambda item: item[2])
+            x, y, w, h = cv2.boundingRect(c)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.circle(frame, center, 5, (255, 0, 0), -1)
+            self.last_center = center
+        else:
+            self.last_center = None
 
         self.pts.appendleft(center)
         
@@ -105,4 +113,24 @@ class BallTracker:
             thickness = int(np.sqrt(len(self.pts) / float(i + 1)) * 2.5)
             cv2.line(frame, self.pts[i - 1], self.pts[i], (0, 0, 255), thickness)
 
+        return frame
+
+class PlayerDetector:
+    def __init__(self):
+        self.mp_pose = mp.solutions.pose
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.pose = self.mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=1)
+
+    def process(self, frame):
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.pose.process(frame_rgb)
+
+        if results.pose_landmarks:
+            self.mp_drawing.draw_landmarks(
+                frame, 
+                results.pose_landmarks, 
+                self.mp_pose.POSE_CONNECTIONS,
+                landmark_drawing_spec=self.mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
+                connection_drawing_spec=self.mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
+            )
         return frame
