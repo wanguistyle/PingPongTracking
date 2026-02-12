@@ -2,4 +2,4 @@ PingpongTrackingEnv/
 __pycache__/
 .DS_Store
 data/
-.env
+results/
