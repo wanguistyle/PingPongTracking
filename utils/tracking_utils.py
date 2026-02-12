@@ -3,7 +3,7 @@ import numpy as np
 import mediapipe as mp
 from collections import deque
 
-class TableDetector:
+class TableDetectorSIFT:
     def __init__(self, reference_image_path, min_match_count=10):
         self.min_match_count = min_match_count
         self.sift = cv2.SIFT_create()
@@ -38,6 +38,13 @@ class TableDetector:
                 cv2.polylines(frame, [np.int32(dst)], True, (255, 0, 0), 3, cv2.LINE_AA)
         
         return frame
+    
+class TableDetectorHough:
+    def __init__(self, min_match_count=10):
+        self.lines = cv2.HoughLines()
+        
+
+
 
 class BallTracker:
     def __init__(self, buffer_size=20, max_jump_dist=200, window_name="Smart Tracker"):
