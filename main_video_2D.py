@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
-from utils.tracking_utils import BallTracker, PlayerDetector, TablePnPEstimator, PingPongUmpire, CourtVisualizer
+from utils.tracking_utils_2D import BallTracker, PlayerDetector, TablePnPEstimator, PingPongUmpire, CourtVisualizer
 
 clicked_points = []
 
@@ -10,52 +9,8 @@ def mouse_callback(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN and len(clicked_points) < 4:
         clicked_points.append((x, y))
 
-def plot_3d_trajectory(trajectory_3d):
-    if len(trajectory_3d) < 5: return
-
-    xs = [pt[0] for pt in trajectory_3d]
-    ys = [pt[1] for pt in trajectory_3d]
-    zs = [pt[2] for pt in trajectory_3d]
-
-    def smooth(data, window_size=5):
-        padded = np.pad(data, (window_size//2, window_size//2), mode='edge')
-        return np.convolve(padded, np.ones(window_size)/window_size, mode='valid')
-
-    smooth_xs = smooth(xs, window_size=7)
-    smooth_ys = smooth(ys, window_size=7)
-    smooth_zs = smooth(zs, window_size=7)
-
-    clean_x, clean_y, clean_z = [], [], []
-    for x, y, z in zip(smooth_xs, smooth_ys, smooth_zs):
-        if -500 < x < 2000 and -500 < y < 2000 and 0 <= z < 1500:
-            clean_x.append(x)
-            clean_y.append(y)
-            clean_z.append(z)
-
-    if not clean_x: return
-
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot(clean_x, clean_y, clean_z, label='Smoothed Ball Path', color='orange', linewidth=2)
-    ax.scatter(clean_x, clean_y, clean_z, c=clean_z, cmap='plasma', s=15)
-
-    xx, yy = np.meshgrid([0, 1525], [0, 1370])
-    zz = np.zeros_like(xx)
-    ax.plot_surface(xx, yy, zz, alpha=0.3, color='blue')
-    net_xx, net_zz = np.meshgrid([0, 1525], [0, 152.5])
-    net_yy = np.ones_like(net_xx) * 1370
-    ax.plot_surface(net_xx, net_yy, net_zz, alpha=0.5, color='white')
-
-    ax.set_xlabel('Width (X) mm')
-    ax.set_ylabel('Length (Y) mm')
-    ax.set_zlabel('Height (Z) mm')
-    ax.set_xlim(-200, 1725)
-    ax.set_ylim(-200, 1570)
-    ax.set_zlim(0, max(clean_z) + 100)
-    plt.legend()
-    plt.show()
-
-def main():   
+def main():
+    global clicked_points
     VIDEO_PATH = 'data/videos/pingpong_videos/IMG_2193.MOV'
     WINDOW_MAIN = "Smart Tracker (Video)"
     WINDOW_3D = "3D Court Radar"
@@ -95,12 +50,10 @@ def main():
         if cv2.waitKey(1) == ord('q'): return
 
     pnp_estimator.update_camera_pose(clicked_points)
-    umpire.set_table_polygon(clicked_points) 
     stream.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     display_text = ""
     display_timer = 0
-    full_match_trajectory = []
 
     while True:
         ret, frame = stream.read()
@@ -121,22 +74,25 @@ def main():
         frame = player_detector.process(frame)
         frame, ball_center, ball_w = ball_tracker.process(frame)
         
-        current_3d_pos = None
-        if ball_center is not None and ball_w > 0 and pnp_estimator.rvec is not None:
+        current_table_coords = None
+        if ball_center is not None and pnp_estimator.rvec is not None:
             bx, by = ball_center
-            coords_3d = pnp_estimator.calculate_true_3d(bx, by, ball_w)
             
-            bounce_result = umpire.update(bx, by)
+            # Project ball directly to the table plane
+            table_coords = pnp_estimator.project_ball_to_table_plane(bx, by)
             
-            if bounce_result:
-                display_text = bounce_result
-                display_timer = 45 
+            if table_coords:
+                current_table_coords = table_coords
+                wx, wy = table_coords
+                
+                # Umpire now uses the 2D Pixel 'by' to detect the bounce
+                bounce_result = umpire.update(by, wx, wy)
+                
+                if bounce_result:
+                    display_text = bounce_result
+                    display_timer = 45 
 
-            if coords_3d:
-                current_3d_pos = coords_3d
-                full_match_trajectory.append(coords_3d)
-
-        minimap = visualizer.draw(ball_3d=current_3d_pos, text=display_text if display_timer > 0 else "")
+        minimap = visualizer.draw(table_coords=current_table_coords, text=display_text if display_timer > 0 else "")
 
         if display_timer > 0:
             color = (0, 255, 0) if "IN" in display_text else (0, 0, 255)
@@ -150,8 +106,6 @@ def main():
 
     stream.release()
     cv2.destroyAllWindows()
-
-    plot_3d_trajectory(full_match_trajectory)
 
 if __name__ == "__main__":
     main()

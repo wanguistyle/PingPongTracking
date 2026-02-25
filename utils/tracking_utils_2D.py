@@ -5,8 +5,6 @@ from collections import deque
 
 class TablePnPEstimator:
     def __init__(self, frame_width, frame_height):
-        # 3D Coordinates for HALF a table. 
-        # Net is at Y=1370. Near edge is at Y=0.
         self.obj_pts = np.float32([[0, 1370, 0], [0, 0, 0], [1525, 0, 0], [1525, 1370, 0]])
         focal_length = frame_width * 0.8
         self.cam_matrix = np.array([[focal_length, 0, frame_width / 2], [0, focal_length, frame_height / 2], [0, 0, 1]], dtype=float)
@@ -30,19 +28,73 @@ class TablePnPEstimator:
         if ray_dir[2, 0] == 0: return None
         t = -cam_pos[2, 0] / ray_dir[2, 0]
         world_pt = cam_pos + t * ray_dir
-        return (float(world_pt[0, 0]), float(world_pt[1, 0]), 0.0)
+        return (float(world_pt[0, 0]), float(world_pt[1, 0]))
 
-    def calculate_true_3d(self, ball_x_2d, ball_y_2d, ball_pixel_width):
-        if self.rvec is None or ball_pixel_width == 0: return None
-        table_point = self.project_ball_to_table_plane(ball_x_2d, ball_y_2d)
-        if not table_point: return None
-        wx, wy, _ = table_point
-        focal_length = self.cam_matrix[0,0]
-        distance_to_camera = (focal_length * 40.0) / ball_pixel_width
-        cam_z = self.tvec[2,0]
-        estimated_z = max(0, cam_z - distance_to_camera)
-        return (wx, wy, estimated_z)
+class PingPongUmpire:
+    def __init__(self):
+        self.TABLE_WIDTH = 1525.0
+        self.TABLE_LENGTH = 1370.0 
+        self.history_2d_y = []
+        self.history_table_coords = []
 
+    def update(self, pixel_y, table_x, table_y):
+        self.history_2d_y.append(pixel_y)
+        self.history_table_coords.append((table_x, table_y))
+        if len(self.history_2d_y) > 10:
+            self.history_2d_y.pop(0)
+            self.history_table_coords.pop(0)
+        return self._detect_bounce()
+
+    def _detect_bounce(self):
+        if len(self.history_2d_y) < 3: return None
+        
+        y_prev2 = self.history_2d_y[-3]
+        y_prev1 = self.history_2d_y[-2]
+        y_current = self.history_2d_y[-1]
+        
+        # In video, Y increases as it goes DOWN the screen.
+        # A bounce is when the ball goes down (y increases), then up (y decreases).
+        if y_prev1 > y_prev2 and y_prev1 > y_current:
+            bounce_x, bounce_y = self.history_table_coords[-2]
+            return self._analyze_bounce(bounce_x, bounce_y)
+        return None
+
+    def _analyze_bounce(self, x, y):
+        # Adding a 30mm grace period for balls that hit the very edge of the white line
+        if -30 <= x <= self.TABLE_WIDTH + 30 and -30 <= y <= self.TABLE_LENGTH + 30:
+            return "IN!"
+        else:
+            return "OUT!"
+
+class CourtVisualizer:
+    def __init__(self, scale=0.2):
+        self.scale = scale
+        self.width = int(1525 * scale)
+        self.length = int(1370 * scale) 
+        
+    def draw(self, table_coords=None, text=""):
+        minimap = np.zeros((self.length + 100, self.width + 100, 3), dtype=np.uint8)
+        offset_x, offset_y = 50, 50
+        
+        cv2.rectangle(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y + self.length), (150, 50, 50), -1)
+        cv2.rectangle(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y + self.length), (255, 255, 255), 2)
+        cv2.line(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y), (200, 200, 200), 4)
+
+        if table_coords:
+            bx, by = table_coords
+            map_x = int(bx * self.scale) + offset_x
+            map_y = offset_y + (self.length - int(by * self.scale))
+            
+            if 0 <= map_y <= minimap.shape[0] and 0 <= map_x <= minimap.shape[1]:
+                cv2.circle(minimap, (map_x, map_y), 8, (0, 165, 255), -1)
+                cv2.circle(minimap, (map_x, map_y), 8, (255, 255, 255), 1)
+
+        if text:
+            color = (0, 255, 0) if "IN" in text else (0, 0, 255)
+            cv2.putText(minimap, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+            
+        return minimap
+    
 class BallTracker:
     def __init__(self, buffer_size=20, max_jump_dist=200, window_name="Smart Tracker"):
         self.pts = deque(maxlen=buffer_size)
@@ -140,7 +192,7 @@ class BallTracker:
                     
                     half_w = int(current_w / 2)
                     cv2.rectangle(frame, (center[0] - half_w, center[1] - half_w), 
-                                         (center[0] + half_w, center[1] + half_w), (0, 255, 255), 2)
+                                        (center[0] + half_w, center[1] + half_w), (0, 255, 255), 2)
                     cv2.circle(frame, center, 5, (0, 165, 255), -1)
                     
                     self.last_center = center
@@ -175,71 +227,3 @@ class PlayerDetector:
                 landmark_drawing_spec=self.mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
                 connection_drawing_spec=self.mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))
         return frame
-
-class PingPongUmpire:
-    def __init__(self):
-        self.table_polygon = None
-        self.history_2d = []
-
-    def set_table_polygon(self, clicked_points):
-        self.table_polygon = np.array(clicked_points, dtype=np.int32)
-
-    def update(self, pixel_x, pixel_y):
-        if self.table_polygon is None: return None
-        
-        self.history_2d.append((pixel_x, pixel_y))
-        if len(self.history_2d) > 10:
-            self.history_2d.pop(0)
-        return self._detect_bounce()
-
-    def _detect_bounce(self):
-        if len(self.history_2d) < 3: return None
-        
-        x0, y0 = self.history_2d[-3]
-        x1, y1 = self.history_2d[-2]
-        x2, y2 = self.history_2d[-1]
-        
-        vy1 = y1 - y0
-        vy2 = y2 - y1
-        ay = vy2 - vy1 
-        
-        if ay < -5 or (vy1 > 0 and vy2 < 0):
-            return self._analyze_bounce(x1, y1)
-        return None
-
-    def _analyze_bounce(self, bounce_x, bounce_y):
-        dist = cv2.pointPolygonTest(self.table_polygon, (float(bounce_x), float(bounce_y)), True)
-        if dist >= -25: 
-            return "IN!"
-        else:
-            return "OUT!"
-
-class CourtVisualizer:
-    def __init__(self, scale=0.2):
-        self.scale = scale
-        self.width = int(1525 * scale)
-        self.length = int(1370 * scale) 
-        
-    def draw(self, ball_3d=None, text=""):
-        minimap = np.zeros((self.length + 100, self.width + 100, 3), dtype=np.uint8)
-        offset_x, offset_y = 50, 50
-        
-        cv2.rectangle(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y + self.length), (150, 50, 50), -1)
-        cv2.rectangle(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y + self.length), (255, 255, 255), 2)
-        cv2.line(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y), (200, 200, 200), 4)
-
-        if ball_3d:
-            bx, by, bz = ball_3d
-            map_x = int(bx * self.scale) + offset_x
-            map_y = offset_y + (self.length - int(by * self.scale))
-            
-            if 0 <= map_y <= minimap.shape[0] and 0 <= map_x <= minimap.shape[1]:
-                radius = max(2, min(15, int(bz * 0.02))) + 4 
-                cv2.circle(minimap, (map_x, map_y), radius, (0, 165, 255), -1)
-                cv2.circle(minimap, (map_x, map_y), radius, (255, 255, 255), 1)
-
-        if text:
-            color = (0, 255, 0) if "IN" in text else (0, 0, 255)
-            cv2.putText(minimap, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-            
-        return minimap
