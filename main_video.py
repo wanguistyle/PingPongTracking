@@ -1,157 +1,61 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
-from utils.tracking_utils import BallTracker, PlayerDetector, TablePnPEstimator, PingPongUmpire, CourtVisualizer
+from utils.tracking_utils import BallTracker, PlayerDetector, PingPongUmpire
 
-clicked_points = []
+def draw_ui_overlay(img, text, position, color):
+    font = cv2.FONT_HERSHEY_DUPLEX
+    overlay = img.copy()
+    (w, h), _ = cv2.getTextSize(text, font, 1.0, 2)
+    cv2.rectangle(overlay, (position[0]-10, position[1]-h-20), (position[0]+w+10, position[1]+10), (0,0,0), -1)
+    cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+    cv2.putText(img, text, position, font, 1.0, color, 2, cv2.LINE_AA)
 
-def mouse_callback(event, x, y, flags, param):
-    global clicked_points
-    if event == cv2.EVENT_LBUTTONDOWN and len(clicked_points) < 4:
-        clicked_points.append((x, y))
-
-def plot_3d_trajectory(trajectory_3d):
-    if len(trajectory_3d) < 5: return
-
-    xs = [pt[0] for pt in trajectory_3d]
-    ys = [pt[1] for pt in trajectory_3d]
-    zs = [pt[2] for pt in trajectory_3d]
-
-    def smooth(data, window_size=5):
-        padded = np.pad(data, (window_size//2, window_size//2), mode='edge')
-        return np.convolve(padded, np.ones(window_size)/window_size, mode='valid')
-
-    smooth_xs = smooth(xs, window_size=7)
-    smooth_ys = smooth(ys, window_size=7)
-    smooth_zs = smooth(zs, window_size=7)
-
-    clean_x, clean_y, clean_z = [], [], []
-    for x, y, z in zip(smooth_xs, smooth_ys, smooth_zs):
-        if -500 < x < 2000 and -500 < y < 2000 and 0 <= z < 1500:
-            clean_x.append(x)
-            clean_y.append(y)
-            clean_z.append(z)
-
-    if not clean_x: return
-
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot(clean_x, clean_y, clean_z, label='Smoothed Ball Path', color='orange', linewidth=2)
-    ax.scatter(clean_x, clean_y, clean_z, c=clean_z, cmap='plasma', s=15)
-
-    xx, yy = np.meshgrid([0, 1525], [0, 1370])
-    zz = np.zeros_like(xx)
-    ax.plot_surface(xx, yy, zz, alpha=0.3, color='blue')
-    net_xx, net_zz = np.meshgrid([0, 1525], [0, 152.5])
-    net_yy = np.ones_like(net_xx) * 1370
-    ax.plot_surface(net_xx, net_yy, net_zz, alpha=0.5, color='white')
-
-    ax.set_xlabel('Width (X) mm')
-    ax.set_ylabel('Length (Y) mm')
-    ax.set_zlabel('Height (Z) mm')
-    ax.set_xlim(-200, 1725)
-    ax.set_ylim(-200, 1570)
-    ax.set_zlim(0, max(clean_z) + 100)
-    plt.legend()
-    plt.show()
-
-def main():   
-    VIDEO_PATH = 'data/videos/pingpong_videos/IMG_2193.MOV'
-    WINDOW_MAIN = "Smart Tracker (Video)"
-    WINDOW_3D = "3D Court Radar"
-    TARGET_WIDTH = 800
-    LOOP_VIDEO = True
-
-    cv2.namedWindow(WINDOW_MAIN, cv2.WINDOW_NORMAL)
-    cv2.namedWindow(WINDOW_3D, cv2.WINDOW_NORMAL)
-    cv2.setMouseCallback(WINDOW_MAIN, mouse_callback)
-
-    ball_tracker = BallTracker(buffer_size=32, max_jump_dist=150, window_name=WINDOW_MAIN)
-    ball_tracker.setup_trackbars()
-    player_detector = PlayerDetector()
+def main():
+    cap = cv2.VideoCapture('data/videos/pingpong_videos/IMG_2193.MOV')
+    win_name = "Ping Pong AI Analyst"
+    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+    
+    tracker = BallTracker(window_name=win_name)
+    tracker.setup_trackbars()
     umpire = PingPongUmpire()
-    visualizer = CourtVisualizer(scale=0.15)
+    detector = PlayerDetector()
 
-    stream = cv2.VideoCapture(VIDEO_PATH)
-    if not stream.isOpened(): return
-
-    ret, initial_frame = stream.read()
-    if not ret: return
-    
-    scale = TARGET_WIDTH / initial_frame.shape[1]
-    height = int(initial_frame.shape[0] * scale)
-    initial_frame = cv2.resize(initial_frame, (TARGET_WIDTH, height))
-    
-    pnp_estimator = TablePnPEstimator(frame_width=TARGET_WIDTH, frame_height=height)
-    
-    while len(clicked_points) < 4:
-        temp_frame = initial_frame.copy()
-        for pt in clicked_points:
-            cv2.circle(temp_frame, pt, 5, (0, 255, 255), -1)
-        
-        instruction = f"Click 4 corners: Net L, Near L, Near R, Net R ({len(clicked_points)}/4)"
-        cv2.putText(temp_frame, instruction, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-        cv2.imshow(WINDOW_MAIN, temp_frame)
-        if cv2.waitKey(1) == ord('q'): return
-
-    pnp_estimator.update_camera_pose(clicked_points)
-    umpire.set_table_polygon(clicked_points) 
-    stream.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
-    display_text = ""
-    display_timer = 0
-    full_match_trajectory = []
+    display_msg, marker, timer = "", None, 0
 
     while True:
-        ret, frame = stream.read()
+        ret, frame = cap.read()
         if not ret:
-            if LOOP_VIDEO:
-                stream.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                ball_tracker.last_center = None
-                display_text = ""
-                continue
-            else: break
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            umpire.reset_rally()
+            continue
 
-        frame = cv2.resize(frame, (TARGET_WIDTH, height))
-        
-        cv2.polylines(frame, [np.int32(clicked_points)], True, (0, 255, 0), 2)
-        for pt in clicked_points:
-            cv2.circle(frame, pt, 5, (0, 255, 255), -1)
+        frame = cv2.resize(frame, (1080, int(frame.shape[0] * (1080/frame.shape[1]))))
+        frame = detector.process(frame)
+        frame, ball, _, is_real = tracker.process(frame)
 
-        frame = player_detector.process(frame)
-        frame, ball_center, ball_w = ball_tracker.process(frame)
-        
-        current_3d_pos = None
-        if ball_center is not None and ball_w > 0 and pnp_estimator.rvec is not None:
-            bx, by = ball_center
-            coords_3d = pnp_estimator.calculate_true_3d(bx, by, ball_w)
-            
-            bounce_result = umpire.update(bx, by)
-            
-            if bounce_result:
-                display_text = bounce_result
-                display_timer = 45 
+        if ball and is_real:
+            result = umpire.update(ball[0], ball[1])
+            if result:
+                display_msg, marker = result
+                timer = 40
 
-            if coords_3d:
-                current_3d_pos = coords_3d
-                full_match_trajectory.append(coords_3d)
+        if timer > 0:
+            clr = (0, 255, 0) if "PADDLE" in display_msg else (0, 165, 255)
+            if "DOUBLE" in display_msg: clr = (0, 0, 255)
+            draw_ui_overlay(frame, display_msg, (50, 80), clr)
+            if marker:
+                cv2.drawMarker(frame, marker, clr, cv2.MARKER_TILTED_CROSS, 30, 3)
+            timer -= 1
 
-        minimap = visualizer.draw(ball_3d=current_3d_pos, text=display_text if display_timer > 0 else "")
+        # Draw trajectory trail
+        for i in range(1, len(tracker.pts)):
+            if tracker.pts[i-1] and tracker.pts[i]:
+                cv2.line(frame, tracker.pts[i-1], tracker.pts[i], (0, 255, 255), 2)
 
-        if display_timer > 0:
-            color = (0, 255, 0) if "IN" in display_text else (0, 0, 255)
-            cv2.putText(frame, display_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.5, color, 4, cv2.LINE_AA)
-            display_timer -= 1
-
-        cv2.imshow(WINDOW_MAIN, frame)
-        cv2.imshow(WINDOW_3D, minimap)
-
+        cv2.imshow(win_name, frame)
         if cv2.waitKey(1) == ord('q'): break
 
-    stream.release()
+    cap.release()
     cv2.destroyAllWindows()
 
-    plot_3d_trajectory(full_match_trajectory)
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()

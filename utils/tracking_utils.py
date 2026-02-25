@@ -3,54 +3,13 @@ import numpy as np
 import mediapipe as mp
 from collections import deque
 
-class TablePnPEstimator:
-    def __init__(self, frame_width, frame_height):
-        # 3D Coordinates for HALF a table. 
-        # Net is at Y=1370. Near edge is at Y=0.
-        self.obj_pts = np.float32([[0, 1370, 0], [0, 0, 0], [1525, 0, 0], [1525, 1370, 0]])
-        focal_length = frame_width * 0.8
-        self.cam_matrix = np.array([[focal_length, 0, frame_width / 2], [0, focal_length, frame_height / 2], [0, 0, 1]], dtype=float)
-        self.dist_coeffs = np.zeros((4, 1))
-        self.rvec = None
-        self.tvec = None
-
-    def update_camera_pose(self, image_pts):
-        if image_pts is None or len(image_pts) != 4: return False
-        success, self.rvec, self.tvec = cv2.solvePnP(self.obj_pts, np.float32(image_pts), self.cam_matrix, self.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
-        return success
-
-    def project_ball_to_table_plane(self, ball_x_2d, ball_y_2d):
-        if self.rvec is None or self.tvec is None: return None
-        R, _ = cv2.Rodrigues(self.rvec)
-        uv_point = np.array([[ball_x_2d], [ball_y_2d], [1.0]])
-        K_inv = np.linalg.inv(self.cam_matrix)
-        R_inv = np.linalg.inv(R)
-        ray_dir = R_inv.dot(K_inv.dot(uv_point))
-        cam_pos = -R_inv.dot(self.tvec)
-        if ray_dir[2, 0] == 0: return None
-        t = -cam_pos[2, 0] / ray_dir[2, 0]
-        world_pt = cam_pos + t * ray_dir
-        return (float(world_pt[0, 0]), float(world_pt[1, 0]), 0.0)
-
-    def calculate_true_3d(self, ball_x_2d, ball_y_2d, ball_pixel_width):
-        if self.rvec is None or ball_pixel_width == 0: return None
-        table_point = self.project_ball_to_table_plane(ball_x_2d, ball_y_2d)
-        if not table_point: return None
-        wx, wy, _ = table_point
-        focal_length = self.cam_matrix[0,0]
-        distance_to_camera = (focal_length * 40.0) / ball_pixel_width
-        cam_z = self.tvec[2,0]
-        estimated_z = max(0, cam_z - distance_to_camera)
-        return (wx, wy, estimated_z)
-
 class BallTracker:
-    def __init__(self, buffer_size=20, max_jump_dist=200, window_name="Smart Tracker"):
+    def __init__(self, buffer_size=30, max_jump_dist=200, window_name="Smart Tracker"):
         self.pts = deque(maxlen=buffer_size)
         self.w_history = deque(maxlen=5) 
         self.window_name = window_name
         self.min_circularity = 0.5
         self.max_jump_dist = max_jump_dist
-        
         self.last_center = None 
         self.last_w = 0
         self.velocity = (0, 0)
@@ -68,9 +27,9 @@ class BallTracker:
 
     def process(self, frame):
         frame_h, frame_w = frame.shape[:2]
-        
         blurred = cv2.GaussianBlur(frame, (11, 11), 0)
         hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+        
         l_h = cv2.getTrackbarPos("Lower Hue", self.window_name)
         u_h = cv2.getTrackbarPos("Upper Hue", self.window_name)
         l_s = cv2.getTrackbarPos("Lower Sat", self.window_name)
@@ -84,7 +43,7 @@ class BallTracker:
 
         contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         center = None
-        current_w = 0
+        is_real = False 
         
         valid_candidates = []
         for c in contours:
@@ -96,10 +55,16 @@ class BallTracker:
             x, y, w, h = cv2.boundingRect(c)
             aspect = w / float(h)
             
+            # --- NOISE FILTER: Size Consistency ---
+            if self.last_w > 0:
+                if w > self.last_w * 2.5 or w < self.last_w * 0.4:
+                    continue 
+
             if circularity > self.min_circularity and 0.5 < aspect < 1.5:
                 M = cv2.moments(c)
                 cX = int(M["m10"] / M["m00"])
                 cY = int(M["m01"] / M["m00"])
+                
                 if self.last_center is not None:
                     dist = np.linalg.norm(np.array((cX, cY)) - np.array(self.last_center))
                     if dist < self.max_jump_dist:
@@ -107,139 +72,85 @@ class BallTracker:
                 else:
                     valid_candidates.append((c, (cX, cY), area, w))
 
-        if len(valid_candidates) > 0:
+        if valid_candidates:
             c, center, _, raw_w = max(valid_candidates, key=lambda item: item[2])
-            x, y, w, h = cv2.boundingRect(c)
-            
-            if self.last_center is not None:
-                dx = center[0] - self.last_center[0]
-                dy = center[1] - self.last_center[1]
-                self.velocity = (dx, dy)
-            else:
-                self.velocity = (0, 0)
-
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.circle(frame, center, 5, (255, 0, 0), -1)
-            
-            self.last_center = center
-            self.last_w = raw_w
-            self.missing_frames = 0
-            
-            self.w_history.append(raw_w)
-            current_w = np.mean(self.w_history)
-            
+            self.velocity = (center[0] - self.last_center[0], center[1] - self.last_center[1]) if self.last_center else (0,0)
+            self.last_center, self.last_w, self.missing_frames = center, raw_w, 0
+            is_real = True 
         else:
-            if self.last_center is not None and self.missing_frames < self.MAX_COAST_FRAMES:
+            # Prediction logic (Coasting)
+            if self.last_center and self.missing_frames < self.MAX_COAST_FRAMES:
                 self.missing_frames += 1
-                pred_x = self.last_center[0] + self.velocity[0]
-                pred_y = self.last_center[1] + self.velocity[1]
-                
-                if 0 <= pred_x <= frame_w and 0 <= pred_y <= frame_h:
-                    center = (int(pred_x), int(pred_y))
-                    current_w = self.last_w
-                    
-                    half_w = int(current_w / 2)
-                    cv2.rectangle(frame, (center[0] - half_w, center[1] - half_w), 
-                                         (center[0] + half_w, center[1] + half_w), (0, 255, 255), 2)
-                    cv2.circle(frame, center, 5, (0, 165, 255), -1)
-                    
-                    self.last_center = center
-                else:
-                    self.last_center = None
-                    self.velocity = (0, 0)
-                    self.missing_frames = 0
+                center = (int(self.last_center[0] + self.velocity[0]), int(self.last_center[1] + self.velocity[1]))
+                self.last_center = center
             else:
                 self.last_center = None
-                self.velocity = (0, 0)
-                self.missing_frames = 0
 
         self.pts.appendleft(center)
-        for i in range(1, len(self.pts)):
-            if self.pts[i - 1] is None or self.pts[i] is None: continue
-            thickness = int(np.sqrt(len(self.pts) / float(i + 1)) * 2.5)
-            cv2.line(frame, self.pts[i - 1], self.pts[i], (0, 0, 255), thickness)
-
-        return frame, center, current_w
-
-class PlayerDetector:
-    def __init__(self):
-        self.mp_pose = mp.solutions.pose
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.pose = self.mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=1)
-
-    def process(self, frame):
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.pose.process(frame_rgb)
-        if results.pose_landmarks:
-            self.mp_drawing.draw_landmarks(frame, results.pose_landmarks, self.mp_pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=self.mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
-                connection_drawing_spec=self.mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))
-        return frame
+        return frame, center, self.last_w, is_real
 
 class PingPongUmpire:
     def __init__(self):
-        self.table_polygon = None
-        self.history_2d = []
+        self.history = []
+        self.bounces_on_table = 0
+        self.cooldown = 0
 
-    def set_table_polygon(self, clicked_points):
-        self.table_polygon = np.array(clicked_points, dtype=np.int32)
+    def reset_rally(self):
+        self.history.clear()
+        self.bounces_on_table = 0
+        self.cooldown = 0
 
     def update(self, pixel_x, pixel_y):
-        if self.table_polygon is None: return None
-        
-        self.history_2d.append((pixel_x, pixel_y))
-        if len(self.history_2d) > 10:
-            self.history_2d.pop(0)
-        return self._detect_bounce()
+        if self.cooldown > 0: self.cooldown -= 1
+        self.history.append((pixel_x, pixel_y))
+        if len(self.history) > 12: self.history.pop(0)
+        return self._analyze_precise()
 
-    def _detect_bounce(self):
-        if len(self.history_2d) < 3: return None
+    def _analyze_precise(self):
+        if len(self.history) < 9 or self.cooldown > 0:
+            return None
+
+        xs = [pt[0] for pt in self.history]
+        ys = [pt[1] for pt in self.history]
+        mid = len(ys) // 2
         
-        x0, y0 = self.history_2d[-3]
-        x1, y1 = self.history_2d[-2]
-        x2, y2 = self.history_2d[-1]
+        # 1. Slope Consistency Check (Filtering Noise)
+        # Average speed of approach and departure
+        slope_in = (ys[mid] - ys[mid-4]) / 4.0
+        slope_out = (ys[mid+4] - ys[mid]) / 4.0
         
-        vy1 = y1 - y0
-        vy2 = y2 - y1
-        ay = vy2 - vy1 
+        # 2. Peak Detection (Is this the lowest point?)
+        is_peak = ys[mid] == max(ys[mid-1:mid+2])
         
-        if ay < -5 or (vy1 > 0 and vy2 < 0):
-            return self._analyze_bounce(x1, y1)
+        # Threshold: Ball must be moving vertically at least 4 pixels/frame
+        if is_peak and slope_in > 4 and slope_out < -4:
+            # 3. Directional Reversal Logic
+            v_in_x = xs[mid] - xs[mid-4]
+            v_out_x = xs[mid+4] - xs[mid]
+            
+            # If x-direction flipped, product is negative
+            direction_flipped = (v_in_x * v_out_x) < -15 
+            
+            self.cooldown = 20 
+            
+            if direction_flipped:
+                self.bounces_on_table = 0
+                return "TABLE -> PADDLE (REVERSAL)", (int(xs[mid]), int(ys[mid]))
+            else:
+                self.bounces_on_table += 1
+                if self.bounces_on_table == 1:
+                    return "BOUNCE 1 (TABLE)", (int(xs[mid]), int(ys[mid]))
+                else:
+                    return "DOUBLE BOUNCE (FAULT)", (int(xs[mid]), int(ys[mid]))
         return None
 
-    def _analyze_bounce(self, bounce_x, bounce_y):
-        dist = cv2.pointPolygonTest(self.table_polygon, (float(bounce_x), float(bounce_y)), True)
-        if dist >= -25: 
-            return "IN!"
-        else:
-            return "OUT!"
+class PlayerDetector:
+    def __init__(self):
+        self.pose = mp.solutions.pose.Pose(min_detection_confidence=0.5, model_complexity=1)
+        self.draw = mp.solutions.drawing_utils
 
-class CourtVisualizer:
-    def __init__(self, scale=0.2):
-        self.scale = scale
-        self.width = int(1525 * scale)
-        self.length = int(1370 * scale) 
-        
-    def draw(self, ball_3d=None, text=""):
-        minimap = np.zeros((self.length + 100, self.width + 100, 3), dtype=np.uint8)
-        offset_x, offset_y = 50, 50
-        
-        cv2.rectangle(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y + self.length), (150, 50, 50), -1)
-        cv2.rectangle(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y + self.length), (255, 255, 255), 2)
-        cv2.line(minimap, (offset_x, offset_y), (offset_x + self.width, offset_y), (200, 200, 200), 4)
-
-        if ball_3d:
-            bx, by, bz = ball_3d
-            map_x = int(bx * self.scale) + offset_x
-            map_y = offset_y + (self.length - int(by * self.scale))
-            
-            if 0 <= map_y <= minimap.shape[0] and 0 <= map_x <= minimap.shape[1]:
-                radius = max(2, min(15, int(bz * 0.02))) + 4 
-                cv2.circle(minimap, (map_x, map_y), radius, (0, 165, 255), -1)
-                cv2.circle(minimap, (map_x, map_y), radius, (255, 255, 255), 1)
-
-        if text:
-            color = (0, 255, 0) if "IN" in text else (0, 0, 255)
-            cv2.putText(minimap, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-            
-        return minimap
+    def process(self, frame):
+        res = self.pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        if res.pose_landmarks:
+            self.draw.draw_landmarks(frame, res.pose_landmarks, mp.solutions.pose.POSE_CONNECTIONS)
+        return frame
