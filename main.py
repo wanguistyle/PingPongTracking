@@ -1,18 +1,21 @@
 import cv2
-from utils.tracking_utils import TableDetector, BallTracker
+from utils.tracking_utils import TableDetector, BallTracker, PlayerDetector
 
 def main():
-    WINDOW_NAME = "Smart Tracker"
-    cv2.namedWindow(WINDOW_NAME)
+    WINDOW_NAME = "Smart Tracker (Live)"
+    
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 
-    try:
-        table_detector = TableDetector('data/table_base.png')
-    except Exception as e:
-        print(e)
-        return
+    # try:
+    #     table_detector = TableDetector('data/table_base.png')
+    # except Exception as e:
+    #     print(e)
+    #     return
 
-    ball_tracker = BallTracker(buffer_size=32, window_name=WINDOW_NAME)
+    ball_tracker = BallTracker(buffer_size=32, max_jump_dist=200, window_name=WINDOW_NAME)
     ball_tracker.setup_trackbars()
+
+    player_detector = PlayerDetector()
 
     stream = cv2.VideoCapture(0)
 
@@ -22,7 +25,8 @@ def main():
 
         frame = cv2.flip(frame, 1)
 
-        frame = table_detector.process(frame)
+        frame = player_detector.process(frame)
+        #frame = table_detector.process(frame)
         frame = ball_tracker.process(frame)
 
         cv2.imshow(WINDOW_NAME, frame)

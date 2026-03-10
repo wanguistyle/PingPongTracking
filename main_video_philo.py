@@ -57,5 +57,4 @@ def main(video_path):
 
     cap.release()
     cv2.destroyAllWindows()
-
 main("roboflow/dataset_labelise/video_lente/video_lente.mp4")

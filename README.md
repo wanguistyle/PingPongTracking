@@ -7,6 +7,10 @@ This one for live streaming fluxes on video
 
 https://www.youtube.com/watch?v=sd25t4HmFdU&t=265s
 
+This one for Hough Transform
+
+https://www.f-legrand.fr/scidoc/docmml/opencv/math/hough/hough.html#:~:text=Méthode%20de%20Hough%20probabiliste,permet%20de%20détecter%20des%20segments.
+
 
 ## YOLO model
 

@@ -1,59 +1,21 @@
 import cv2
 import numpy as np
+import mediapipe as mp
 from collections import deque
 
-class TableDetector:
-    def __init__(self, reference_image_path, min_match_count=10):
-        self.min_match_count = min_match_count
-        self.sift = cv2.SIFT_create()
-        
-        self.img_base = cv2.imread(reference_image_path, 0)
-        if self.img_base is None:
-            raise ValueError(f"Could not load image at {reference_image_path}")
-            
-        self.kp_base, self.des_base = self.sift.detectAndCompute(self.img_base, None)
-        
-        index_params = dict(algorithm=1, trees=5)
-        search_params = dict(checks=50)
-        self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
-
-    def process(self, frame):
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        # Calculate keypoints for the current frame
-        kp_frame, des_frame = self.sift.detectAndCompute(gray_frame, None)
-
-        if des_frame is None or len(des_frame) < 2:
-            return frame
-
-        matches = self.matcher.knnMatch(self.des_base, des_frame, k=2)
-
-        good = [m for m, n in matches if m.distance < 0.7 * n.distance]
-
-        if len(good) > self.min_match_count:
-            src_pts = np.float32([self.kp_base[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-            
-            # FIXED: Used 'kp_frame' directly instead of 'self.kp_frame'
-            dst_pts = np.float32([kp_frame[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
-
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-
-            if M is not None:
-                h, w = self.img_base.shape
-                pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
-                dst = cv2.perspectiveTransform(pts, M)
-                
-                cv2.polylines(frame, [np.int32(dst)], True, (255, 0, 0), 3, cv2.LINE_AA)
-                cv2.putText(frame, "Table Locked", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        
-        return frame
-
 class BallTracker:
-    def __init__(self, buffer_size=20, window_name="Smart Tracker"):
+    def __init__(self, buffer_size=30, max_jump_dist=200, window_name="Smart Tracker"):
         self.pts = deque(maxlen=buffer_size)
+        self.w_history = deque(maxlen=5) 
         self.window_name = window_name
         self.min_circularity = 0.5
-        
+        self.max_jump_dist = max_jump_dist
+        self.last_center = None 
+        self.last_w = 0
+        self.velocity = (0, 0)
+        self.missing_frames = 0
+        self.MAX_COAST_FRAMES = 7 
+
     def setup_trackbars(self):
         def nothing(x): pass
         cv2.createTrackbar("Lower Hue", self.window_name, 5, 179, nothing)
@@ -64,9 +26,10 @@ class BallTracker:
         cv2.createTrackbar("Upper Val", self.window_name, 255, 255, nothing)
 
     def process(self, frame):
+        frame_h, frame_w = frame.shape[:2]
         blurred = cv2.GaussianBlur(frame, (11, 11), 0)
         hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
-
+        
         l_h = cv2.getTrackbarPos("Lower Hue", self.window_name)
         u_h = cv2.getTrackbarPos("Upper Hue", self.window_name)
         l_s = cv2.getTrackbarPos("Lower Sat", self.window_name)
@@ -80,29 +43,114 @@ class BallTracker:
 
         contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         center = None
-
-        if len(contours) > 0:
-            c = max(contours, key=cv2.contourArea)
-            perimeter = cv2.arcLength(c, True)
+        is_real = False 
+        
+        valid_candidates = []
+        for c in contours:
             area = cv2.contourArea(c)
+            if area < 50: continue
+            perimeter = cv2.arcLength(c, True)
+            if perimeter == 0: continue
+            circularity = 4 * np.pi * (area / (perimeter * perimeter))
+            x, y, w, h = cv2.boundingRect(c)
+            aspect = w / float(h)
+            
+            # --- NOISE FILTER: Size Consistency ---
+            if self.last_w > 0:
+                if w > self.last_w * 2.5 or w < self.last_w * 0.4:
+                    continue 
 
-            if perimeter > 0:
-                circularity = 4 * np.pi * (area / (perimeter * perimeter))
-                x, y, w, h = cv2.boundingRect(c)
-                aspect = w / float(h)
+            if circularity > self.min_circularity and 0.5 < aspect < 1.5:
+                M = cv2.moments(c)
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                
+                if self.last_center is not None:
+                    dist = np.linalg.norm(np.array((cX, cY)) - np.array(self.last_center))
+                    if dist < self.max_jump_dist:
+                        valid_candidates.append((c, (cX, cY), area, w))
+                else:
+                    valid_candidates.append((c, (cX, cY), area, w))
 
-                if area > 300 and circularity > self.min_circularity and 0.6 < aspect < 1.4:
-                    M = cv2.moments(c)
-                    center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-                    
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    cv2.circle(frame, center, 5, (255, 0, 0), -1)
+        if valid_candidates:
+            c, center, _, raw_w = max(valid_candidates, key=lambda item: item[2])
+            self.velocity = (center[0] - self.last_center[0], center[1] - self.last_center[1]) if self.last_center else (0,0)
+            self.last_center, self.last_w, self.missing_frames = center, raw_w, 0
+            is_real = True 
+        else:
+            # Prediction logic (Coasting)
+            if self.last_center and self.missing_frames < self.MAX_COAST_FRAMES:
+                self.missing_frames += 1
+                center = (int(self.last_center[0] + self.velocity[0]), int(self.last_center[1] + self.velocity[1]))
+                self.last_center = center
+            else:
+                self.last_center = None
 
         self.pts.appendleft(center)
-        
-        for i in range(1, len(self.pts)):
-            if self.pts[i - 1] is None or self.pts[i] is None: continue
-            thickness = int(np.sqrt(len(self.pts) / float(i + 1)) * 2.5)
-            cv2.line(frame, self.pts[i - 1], self.pts[i], (0, 0, 255), thickness)
+        return frame, center, self.last_w, is_real
 
+class PingPongUmpire:
+    def __init__(self):
+        self.history = []
+        self.bounces_on_table = 0
+        self.cooldown = 0
+
+    def reset_rally(self):
+        self.history.clear()
+        self.bounces_on_table = 0
+        self.cooldown = 0
+
+    def update(self, pixel_x, pixel_y):
+        if self.cooldown > 0: self.cooldown -= 1
+        self.history.append((pixel_x, pixel_y))
+        if len(self.history) > 12: self.history.pop(0)
+        return self._analyze_precise()
+
+    def _analyze_precise(self):
+        if len(self.history) < 9 or self.cooldown > 0:
+            return None
+
+        xs = [pt[0] for pt in self.history]
+        ys = [pt[1] for pt in self.history]
+        mid = len(ys) // 2
+        
+        # 1. Slope Consistency Check (Filtering Noise)
+        # Average speed of approach and departure
+        slope_in = (ys[mid] - ys[mid-4]) / 4.0
+        slope_out = (ys[mid+4] - ys[mid]) / 4.0
+        
+        # 2. Peak Detection (Is this the lowest point?)
+        is_peak = ys[mid] == max(ys[mid-1:mid+2])
+        
+        # Threshold: Ball must be moving vertically at least 4 pixels/frame
+        if is_peak and slope_in > 4 and slope_out < -4:
+            # 3. Directional Reversal Logic
+            v_in_x = xs[mid] - xs[mid-4]
+            v_out_x = xs[mid+4] - xs[mid]
+            
+            # If x-direction flipped, product is negative
+            direction_flipped = (v_in_x * v_out_x) < -15 
+            
+            self.cooldown = 20 
+            
+            if direction_flipped:
+                self.bounces_on_table = 0
+                return "TABLE -> PADDLE (REVERSAL)", (int(xs[mid]), int(ys[mid]))
+            else:
+                self.bounces_on_table += 1
+                if self.bounces_on_table == 1:
+                    return "BOUNCE 1 (TABLE)", (int(xs[mid]), int(ys[mid]))
+                else:
+                    return "DOUBLE BOUNCE (FAULT)", (int(xs[mid]), int(ys[mid]))
+        return None
+
+class PlayerDetector:
+    def __init__(self):
+        self.pose = mp.solutions.pose.Pose(min_detection_confidence=0.5, model_complexity=1)
+        self.draw = mp.solutions.drawing_utils
+
+    def process(self, frame):
+        res = self.pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        if res.pose_landmarks:
+            self.draw.draw_landmarks(frame, res.pose_landmarks, mp.solutions.pose.POSE_CONNECTIONS)
         return frame

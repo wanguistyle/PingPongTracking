@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<annotations>
+  <version>1.1</version>
+  <meta>
+    <job>
+      <id>4841</id>
+      <size>17</size>
+      <mode>interpolation</mode>
+      <overlap>5</overlap>
+      <bugtracker></bugtracker>
+      <created>2026-03-08 06:40:12.453799+00:00</created>
+      <updated>2026-03-08 06:45:32.899823+00:00</updated>
+      <subset>default</subset>
+      <start_frame>0</start_frame>
+      <stop_frame>240</stop_frame>
+      <frame_filter>step=15</frame_filter>
+      <segments>
+        <segment>
+          <id>4861</id>
+          <start>0</start>
+          <stop>16</stop>
+          <url>https://cvatai.humansintheloop.org/api/jobs/4841</url>
+        </segment>
+      </segments>
+      <owner>
+        <username>bastienmor</username>
+        <email>basyienmoron2@gmail.com</email>
+      </owner>
+      <assignee>
+        <username>bastienmor</username>
+        <email>basyienmoron2@gmail.com</email>
+      </assignee>
+      <labels>
+        <label>
+          <name>balle</name>
+          <color>#94e3f1</color>
+          <type>any</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>raquette</name>
+          <color>#c12158</color>
+          <type>any</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>joueur</name>
+          <color>#753509</color>
+          <type>any</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>table</name>
+          <color>#b080c0</color>
+          <type>any</type>
+          <attributes>
+          </attributes>
+        </label>
+      </labels>
+    </job>
+    <dumped>2026-03-08 06:49:45.880120+00:00</dumped>
+    <original_size>
+      <width>640</width>
+      <height>480</height>
+    </original_size>
+  </meta>
+  <track id="0" label="balle" source="manual">
+    <box frame="30" keyframe="1" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="45" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="60" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="75" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="90" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="105" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="120" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="135" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="150" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="165" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="180" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="195" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="210" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="225" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+    <box frame="240" keyframe="0" outside="0" occluded="0" xtl="328.34" ytl="346.16" xbr="356.85" ybr="376.26" z_order="0">
+    </box>
+  </track>
+  <track id="1" label="balle" source="manual">
+    <box frame="0" keyframe="1" outside="0" occluded="0" xtl="326.75" ytl="346.16" xbr="356.06" ybr="376.26" z_order="0">
+    </box>
+    <box frame="15" keyframe="1" outside="1" occluded="0" xtl="326.75" ytl="346.16" xbr="356.06" ybr="376.26" z_order="0">
+    </box>
+  </track>
+  <track id="2" label="balle" source="manual">
+    <box frame="15" keyframe="1" outside="0" occluded="0" xtl="327.54" ytl="346.95" xbr="355.27" ybr="376.26" z_order="0">
+    </box>
+    <box frame="30" keyframe="1" outside="1" occluded="0" xtl="327.54" ytl="346.95" xbr="355.27" ybr="376.26" z_order="0">
+    </box>
+  </track>
+</annotations>

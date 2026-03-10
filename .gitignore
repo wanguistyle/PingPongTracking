@@ -1,4 +1,10 @@
 PingpongTrackingEnv/
 __pycache__/
 .DS_Store
-data/
+datas/
+.env
+models/
+runs/
+env_ping/
+.vscode/roboflow/*.pt
+roboflow/*.pt
