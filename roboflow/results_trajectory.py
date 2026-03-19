@@ -6,7 +6,7 @@ from collections import deque
 path='/Users/philomenecarrel/4A/projet_info_ping_pong/PingPongTracking/roboflow/'
 # --- CONFIGURATION ---
 model_path = path + 'models/best-2.pt'        # Le chemin vers votre modèle entraîné
-video_path = path + 'datas/video2.mp4'   # Votre vidéo de match
+video_path = path + 'dataset_labelise/video_simple/video_simple.mp4'   # Votre vidéo de match
 taille_trace = 10           # Nombre de points à garder (longueur de la queue)
 # ---------------------
 
