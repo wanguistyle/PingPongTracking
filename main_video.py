@@ -29,11 +29,11 @@ def draw_ui_overlay(img, text, position, color):
     cv2.putText(img, text, position, font, 1.0, color, 2, cv2.LINE_AA)
 
 def main():
-    #VIDEO_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4'
-    #CSV_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4.csv'
+    VIDEO_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4'
+    CSV_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4.csv'
     
-    VIDEO_PATH = 'data/dataset_labelise/video_bastien/video2.mp4'
-    CSV_PATH = 'data/dataset_labelise/video_bastien/video2.mp4.csv'
+    #VIDEO_PATH = 'data/dataset_labelise/video_bastien/video2.mp4'
+    #CSV_PATH = 'data/dataset_labelise/video_bastien/video2.mp4.csv'
 
     gt_events = load_ground_truth(CSV_PATH)
     false_positives = 0 
