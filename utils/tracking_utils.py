@@ -148,9 +148,26 @@ class PlayerDetector:
     def __init__(self):
         self.pose = mp.solutions.pose.Pose(min_detection_confidence=0.5, model_complexity=1)
         self.draw = mp.solutions.drawing_utils
+        self.last_landmarks = None # Pour mémoriser la pose de la frame actuelle
 
     def process(self, frame):
         res = self.pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        self.last_landmarks = res.pose_landmarks # On sauvegarde les points
         if res.pose_landmarks:
             self.draw.draw_landmarks(frame, res.pose_landmarks, mp.solutions.pose.POSE_CONNECTIONS)
         return frame
+
+    def classifier_coup(self):
+        """Classifie le coup basé sur la position du poignet et du coude."""
+        if not self.last_landmarks:
+            return "Inconnu"
+            
+        # Index MediaPipe : 16 = Poignet droit, 14 = Coude droit
+        poignet = self.last_landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_WRIST]
+        coude = self.last_landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_ELBOW]
+        
+        # En MediaPipe, les coordonnées x vont de 0.0 (gauche) à 1.0 (droite)
+        if poignet.x < coude.x:
+            return "COUP DROIT"
+        else:
+            return "REVERS"

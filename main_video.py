@@ -14,7 +14,7 @@ def load_ground_truth(csv_path):
                     'start': int(row['Start']),
                     'end': int(row['End']),
                     'name': row['Name'],
-                    'detected_predictions': []
+                    'detected_predictions': [] # On y stockera les prédictions (ex: "coup_droit")
                 })
     except Exception as e:
         print(f"Warning: Could not load CSV. {e}")
@@ -29,15 +29,20 @@ def draw_ui_overlay(img, text, position, color):
     cv2.putText(img, text, position, font, 1.0, color, 2, cv2.LINE_AA)
 
 def main():
+    # --- CHEMINS ---
     VIDEO_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4'
-    CSV_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4.csv'
+    CSV_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4.csv' 
     
-    VIDEO_PATH = 'data/Videos_annotees/Sombre_echange/sombre_echanges - Trim.mp4'
-    #CSV_PATH = 'data/dataset_labelise/video_bastien/video2.mp4.csv'
-    
-
-    #gt_events = load_ground_truth(CSV_PATH)
+    # 1. Chargement des données CSV
+    gt_events = load_ground_truth(CSV_PATH)
     false_positives = 0 
+    
+    # Dictionnaire de traduction (Sortie IA -> Format CSV)
+    class_map = {
+        "COUP DROIT": "coup_droit",
+        "REVERS": "revers",
+        "Inconnu": "inconnu"
+    }
 
     win_name = "Ping Pong AI Analyst - Evaluation Mode"
     cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
@@ -68,24 +73,32 @@ def main():
         frame, ball, _, is_real = tracker.process(frame)
 
         if ball and is_real:
+            # L'arbitre analyse la trajectoire
             result = umpire.update(ball[0], ball[1])
             
             if result:
                 display_msg, marker = result
                 timer = 40
                 
-                matched_to_gt = False
-                #for gt in gt_events:
-                #    if gt['start'] <= frame_idx <= gt['end']:
-                #        gt['detected_predictions'].append(display_msg)
-                #        matched_to_gt = True
-                #        break
-                #
-                #if not matched_to_gt:
-                #    false_positives += 1
+                if "PADDLE" in display_msg:
+                    type_coup = detector.classifier_coup()
+                    mapped_coup = class_map.get(type_coup, "inconnu")
+                    display_msg = f"IMPACT : {type_coup}"
+                
+                    # Comparaison vérité terrain
+                    matched_to_gt = False
+                    for gt in gt_events:
+                        if gt['start'] <= frame_idx <= gt['end']:
+                            gt['detected_predictions'].append(mapped_coup)
+                            matched_to_gt = True
+                            break
+                    
+                    # Si on n'a trouvé aucun intervalle correspondant dans le CSV
+                    if not matched_to_gt:
+                        false_positives += 1
 
         if timer > 0:
-            clr = (0, 255, 0) if "PADDLE" in display_msg else (0, 165, 255)
+            clr = (0, 255, 0) if "IMPACT" in display_msg else (0, 165, 255)
             if "DOUBLE" in display_msg or "FAULT" in display_msg: clr = (0, 0, 255)
             
             debug_text = f"Frame {frame_idx}: {display_msg}"
@@ -105,28 +118,39 @@ def main():
     cap.release()
     cv2.destroyAllWindows()
 
-    #print("\n" + "="*50)
-    #print("           TRACKER PERFORMANCE METRICS")
-    #print("="*50)
-    #
-    #detected_count = 0
-    #
-    #for gt in gt_events:
-    #    preds = gt['detected_predictions']
-    #    if len(preds) > 0:
-    #        detected_count += 1
-    #        unique_preds = list(set(preds))
-    #        print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<25} : DETECTED \t(Umpire said: {unique_preds})")
-    #    else:
-    #        print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<25} : MISSED")
-#
-    #total_gt = len(gt_events)
-    #accuracy = (detected_count / total_gt) * 100 if total_gt > 0 else 0
-    #
-    #print("-" * 50)
-    #print(f"Accuracy (True Positives): {detected_count} / {total_gt} events found ({accuracy:.1f}%)")
-    #print(f"False Positives (Ghosts):  {false_positives} events triggered outside CSV windows")
-    #print("=" * 50 + "\n")
+    print("\n" + "="*55)
+    print("           TRACKER PERFORMANCE METRICS")
+    print("="*55)
+    
+    vrai_positif = 0
+    erreur_classe = 0
+    faux_negatif = 0
+    
+    for gt in gt_events:
+        preds = gt['detected_predictions']
+        if len(preds) > 0:
+            # On vérifie si la bonne classe figure parmi les prédictions
+            if gt['name'] in preds:
+                vrai_positif += 1
+                print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<15} : SUCCES")
+            else:
+                erreur_classe += 1
+                unique_preds = list(set(preds))
+                print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<15} : ERREUR CLASSE (Vu: {unique_preds[0]})")
+        else:
+            faux_negatif += 1
+            print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<15} : MANQUÉ (Faux Négatif)")
+
+    total_gt = len(gt_events)
+    accuracy = (vrai_positif / total_gt) * 100 if total_gt > 0 else 0
+    
+    print("-" * 55)
+    print(f"Coups Totaux dans le CSV : {total_gt}")
+    print(f"Vrais Positifs (Bon coup détecté) : {vrai_positif}")
+    print(f"Erreurs de classe                : {erreur_classe}")
+    print(f"Faux Positifs (Coups fantômes)   : {false_positives}")
+    print(f"Précision globale (Accuracy)      : {accuracy:.1f}%")
+    print("=" * 55 + "\n")
 
 if __name__ == "__main__": 
     main()
