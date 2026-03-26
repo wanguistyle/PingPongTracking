@@ -32,10 +32,11 @@ def main():
     VIDEO_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4'
     CSV_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4.csv'
     
-    #VIDEO_PATH = 'data/dataset_labelise/video_bastien/video2.mp4'
+    VIDEO_PATH = 'data/Videos_annotees/Sombre_echange/sombre_echanges - Trim.mp4'
     #CSV_PATH = 'data/dataset_labelise/video_bastien/video2.mp4.csv'
+    
 
-    gt_events = load_ground_truth(CSV_PATH)
+    #gt_events = load_ground_truth(CSV_PATH)
     false_positives = 0 
 
     win_name = "Ping Pong AI Analyst - Evaluation Mode"
@@ -74,14 +75,14 @@ def main():
                 timer = 40
                 
                 matched_to_gt = False
-                for gt in gt_events:
-                    if gt['start'] <= frame_idx <= gt['end']:
-                        gt['detected_predictions'].append(display_msg)
-                        matched_to_gt = True
-                        break
-                
-                if not matched_to_gt:
-                    false_positives += 1
+                #for gt in gt_events:
+                #    if gt['start'] <= frame_idx <= gt['end']:
+                #        gt['detected_predictions'].append(display_msg)
+                #        matched_to_gt = True
+                #        break
+                #
+                #if not matched_to_gt:
+                #    false_positives += 1
 
         if timer > 0:
             clr = (0, 255, 0) if "PADDLE" in display_msg else (0, 165, 255)
@@ -104,28 +105,28 @@ def main():
     cap.release()
     cv2.destroyAllWindows()
 
-    print("\n" + "="*50)
-    print("           TRACKER PERFORMANCE METRICS")
-    print("="*50)
-    
-    detected_count = 0
-    
-    for gt in gt_events:
-        preds = gt['detected_predictions']
-        if len(preds) > 0:
-            detected_count += 1
-            unique_preds = list(set(preds))
-            print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<25} : DETECTED \t(Umpire said: {unique_preds})")
-        else:
-            print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<25} : MISSED")
-
-    total_gt = len(gt_events)
-    accuracy = (detected_count / total_gt) * 100 if total_gt > 0 else 0
-    
-    print("-" * 50)
-    print(f"Accuracy (True Positives): {detected_count} / {total_gt} events found ({accuracy:.1f}%)")
-    print(f"False Positives (Ghosts):  {false_positives} events triggered outside CSV windows")
-    print("=" * 50 + "\n")
+    #print("\n" + "="*50)
+    #print("           TRACKER PERFORMANCE METRICS")
+    #print("="*50)
+    #
+    #detected_count = 0
+    #
+    #for gt in gt_events:
+    #    preds = gt['detected_predictions']
+    #    if len(preds) > 0:
+    #        detected_count += 1
+    #        unique_preds = list(set(preds))
+    #        print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<25} : DETECTED \t(Umpire said: {unique_preds})")
+    #    else:
+    #        print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<25} : MISSED")
+#
+    #total_gt = len(gt_events)
+    #accuracy = (detected_count / total_gt) * 100 if total_gt > 0 else 0
+    #
+    #print("-" * 50)
+    #print(f"Accuracy (True Positives): {detected_count} / {total_gt} events found ({accuracy:.1f}%)")
+    #print(f"False Positives (Ghosts):  {false_positives} events triggered outside CSV windows")
+    #print("=" * 50 + "\n")
 
 if __name__ == "__main__": 
     main()
