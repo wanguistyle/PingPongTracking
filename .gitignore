@@ -8,3 +8,4 @@ runs/
 env_ping/
 .vscode/roboflow/*.pt
 roboflow/*.pt
+dataset_labelise/

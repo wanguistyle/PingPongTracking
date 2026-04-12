@@ -5,7 +5,7 @@ from ultralytics import YOLO
 
 # --- CHARGEMENT DU FICHIER CSV ---
 # Assurez-vous d'adapter le chemin vers votre fichier csv
-df_annotations = pd.read_csv("data/derniere_video/echanges_gymnase2.mp4.csv")
+df_annotations = pd.read_csv("/Users/philomenecarrel/4A/projet_info_ping_pong/PingPongTracking/roboflow/dataset_labelise/echange_gymnase/echanges_gymnase2.mp4.csv")
 
 # Variables pour les métriques
 metrics = {
@@ -44,7 +44,7 @@ mapping_noms = {
 }
 
 # --- BOUCLE VIDÉO ---
-cap = cv2.VideoCapture("data/derniere_video/echanges_gymnase2.mp4")
+cap = cv2.VideoCapture("/Users/philomenecarrel/4A/projet_info_ping_pong/PingPongTracking/roboflow/dataset_labelise/echange_gymnase/echanges_gymnase2.mp4")
 frame_idx = 0 # Compteur de frames
 
 while cap.isOpened():
