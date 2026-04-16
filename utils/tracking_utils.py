@@ -78,7 +78,6 @@ class BallTracker:
             self.last_center, self.last_w, self.missing_frames = center, raw_w, 0
             is_real = True 
         else:
-            # Prediction logic (Coasting)
             if self.last_center and self.missing_frames < self.MAX_COAST_FRAMES:
                 self.missing_frames += 1
                 center = (int(self.last_center[0] + self.velocity[0]), int(self.last_center[1] + self.velocity[1]))
@@ -114,12 +113,9 @@ class PingPongUmpire:
         ys = [pt[1] for pt in self.history]
         mid = len(ys) // 2
         
-        # 1. Slope Consistency Check (Filtering Noise)
-        # Average speed of approach and departure
         slope_in = (ys[mid] - ys[mid-4]) / 4.0
         slope_out = (ys[mid+4] - ys[mid]) / 4.0
         
-        # 2. Peak Detection (Is this the lowest point?)
         is_peak = ys[mid] == max(ys[mid-1:mid+2])
         
         # Threshold: Ball must be moving vertically at least 4 pixels/frame

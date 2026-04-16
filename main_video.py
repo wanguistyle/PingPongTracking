@@ -14,7 +14,7 @@ def load_ground_truth(csv_path):
                     'start': int(row['Start']),
                     'end': int(row['End']),
                     'name': row['Name'],
-                    'detected_predictions': [] # On y stockera les prédictions (ex: "coup_droit")
+                    'detected_predictions': []
                 })
     except Exception as e:
         print(f"Warning: Could not load CSV. {e}")
@@ -29,15 +29,12 @@ def draw_ui_overlay(img, text, position, color):
     cv2.putText(img, text, position, font, 1.0, color, 2, cv2.LINE_AA)
 
 def main():
-    # --- CHEMINS ---
-    VIDEO_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4'
-    CSV_PATH = 'data/dataset_labelise/video_simple/video_simple.mp4.csv' 
+    VIDEO_PATH = 'data/derniere_video/echanges_gymnase2.mp4'
+    CSV_PATH = 'data/derniere_video/echanges_gymnase2.mp4.csv' 
     
-    # 1. Chargement des données CSV
     gt_events = load_ground_truth(CSV_PATH)
     false_positives = 0 
     
-    # Dictionnaire de traduction (Sortie IA -> Format CSV)
     class_map = {
         "COUP DROIT": "coup_droit",
         "REVERS": "revers",
@@ -93,7 +90,6 @@ def main():
                             matched_to_gt = True
                             break
                     
-                    # Si on n'a trouvé aucun intervalle correspondant dans le CSV
                     if not matched_to_gt:
                         false_positives += 1
 
@@ -118,9 +114,7 @@ def main():
     cap.release()
     cv2.destroyAllWindows()
 
-    print("\n" + "="*55)
-    print("           TRACKER PERFORMANCE METRICS")
-    print("="*55)
+    print(" TRACKER PERFORMANCE METRICS")
     
     vrai_positif = 0
     erreur_classe = 0
@@ -129,7 +123,6 @@ def main():
     for gt in gt_events:
         preds = gt['detected_predictions']
         if len(preds) > 0:
-            # On vérifie si la bonne classe figure parmi les prédictions
             if gt['name'] in preds:
                 vrai_positif += 1
                 print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<15} : SUCCES")
@@ -142,15 +135,20 @@ def main():
             print(f"[Frames {gt['start']:03d}-{gt['end']:03d}] {gt['name']:<15} : MANQUÉ (Faux Négatif)")
 
     total_gt = len(gt_events)
-    accuracy = (vrai_positif / total_gt) * 100 if total_gt > 0 else 0
+    
+    rappel = (vrai_positif / total_gt) * 100 if total_gt > 0 else 0
+    
+    total_predictions = vrai_positif + erreur_classe + false_positives
+    precision = (vrai_positif / total_predictions) * 100 if total_predictions > 0 else 0
     
     print("-" * 55)
     print(f"Coups Totaux dans le CSV : {total_gt}")
     print(f"Vrais Positifs (Bon coup détecté) : {vrai_positif}")
-    print(f"Erreurs de classe                : {erreur_classe}")
-    print(f"Faux Positifs (Coups fantômes)   : {false_positives}")
-    print(f"Précision globale (Accuracy)      : {accuracy:.1f}%")
-    print("=" * 55 + "\n")
+    print(f"Erreurs de classe                 : {erreur_classe}")
+    print(f"Faux Négatifs (Coups ratés)       : {faux_negatif}")
+    print(f"Faux Positifs (Coups fantômes)    : {false_positives}")
+    print(f"Précision (Precision) : {precision:.1f}%")
+    print(f"Rappel (Recall)       : {rappel:.1f}%")
 
 if __name__ == "__main__": 
     main()
