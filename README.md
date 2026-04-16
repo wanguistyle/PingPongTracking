@@ -20,7 +20,8 @@ Based on the core files, the project is structured as follows:
     * `BallTracker`: Handles OpenCV image processing, HSV masking, and spatial tracking.
     * `PingPongUmpire`: Analyzes the tracked coordinates to determine the context of the bounce (Table vs. Paddle).
     * `PlayerDetector`: Wraps MediaPipe's Pose detection to analyze player biomechanics and classify stroke types.
-* **`data/`** : Expected to contain the video files (`.mp4`) and their corresponding annotation files (`.csv`).
+Other utils are used to explore more solutions.
+* **`data/`** : Expected to contain the video files (`.mp4`) and their corresponding annotation files (`.csv`). Has to be added from the exterior.
 * **`tests/`**: A place where to practice on new codes and technologies before puting it or not in utils
 * **`color_evaluation/`**: Test on colorimetry on the ball and table
 
