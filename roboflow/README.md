@@ -16,10 +16,10 @@ Ping Pong AI Analyst est un outil de vision par ordinateur conçu pour détecter
 ### `ball_detection_and_trajectory/`
 
 **`results_trajectory.py`** — Trajectoire sur vidéo  
-Lance la détection YOLO sur chaque frame d'un fichier `.mp4`. Conserve un historique glissant des `N` dernières positions détectées (`deque`) et les relie par des lignes jaunes pour visualiser la trajectoire de la balle.
+Lance la détection YOLO sur chaque frame d'un fichier `.mp4`. Conserve un historique glissant des `N` dernières positions détectées et les relie par des lignes jaunes pour visualiser la trajectoire de la balle.
 
 **`results_trajectory_live.py`** — Trajectoire en live  
-Même logique que `results_trajectory.py`, mais appliquée au flux d'une webcam. Applique un effet miroir horizontal pour un rendu naturel. Si la balle n'est pas détectée sur une frame, un `None` est inséré pour éviter de relier des positions temporellement trop distantes.
+Même logique que `results_trajectory.py`, mais appliquée au flux d'une webcam. Si la balle n'est pas détectée sur une frame, un `None` est inséré pour éviter de relier des positions temporellement trop distantes.
 
 ---
 
