@@ -3,9 +3,14 @@
 To ensure the reliability of the Ping Pong AI Analyst, our evaluation methodology is split into two distinct testing protocols. The first rigidly benchmarks the **Spatial Tracking Accuracy** of the computer vision engine, while the second assesses the system's real-time **Temporal & Categorical Accuracy** (event classification).
 
 ### 1. Spatial Tracking Accuracy (`metrics.ipynb`)
-To validate the system's ability to precisely locate the ball frame-by-frame, we benchmarked multiple models: a custom YOLOv8 model, our Advanced Computer Vision Tracker (`BallTracker`), and a Baseline HSV Tracker. 
 
-The evaluation operates against a dense Ground Truth (GT) dataset (`annotations.csv`) containing explicit X and Y pixel coordinates for the ball's centroid.
+To validate the system's ability to precisely locate the ball frame-by-frame, we benchmarked three models across three test videos (`video_immobile`, `video_lente`, `video_simple`) from the labelled dataset:
+
+* **YOLO** (`best-2.pt`) — fine-tuned YOLO model, frame-by-frame inference via `ultralytics`
+* **Computer Vision Tracker** (`BallTracker`) — advanced OpenCV tracker using HSV filtering, contour detection and a momentum-based "coasting" mechanism (from `utils/tracking_utils_2D.py`)
+* **Basic HSV Tracker** — simple color detection via an orange HSV mask (`[5–15°, S>150, V>150]`) with no tracking logic
+
+Each model produces a list of `[frame_idx, cx, cy, confidence]` tuples. These predictions are then aligned against the dense Ground Truth dataset (`annotations.csv`), which contains manually annotated bounding boxes whose centroids `(cx_gt, cy_gt)` are computed at evaluation time.
 
 #### 1.1 Distance & Error Metrics
 For every frame $i$ where the ball is annotated, we extract the model's predicted centroid $(cx_{pred}, cy_{pred})$ and compare it to the ground truth centroid $(cx_{gt}, cy_{gt})$. The primary spatial metric is the **Euclidean Distance (L2 Norm)**:
@@ -28,6 +33,7 @@ Because models occasionally lose the ball entirely due to motion blur or player 
 $$Detection\ Rate = \left( \frac{Frames\ Detected}{Total\ GT\ Frames} \right) \times 100$$
 
 *By cross-referencing MAE, RMSE, and Detection Rate, we determine not only which model tracks the ball closest to physical reality, but which is the most reliable across varying lighting and speed conditions.*
+
 
 ---
 
