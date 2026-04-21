@@ -54,7 +54,6 @@ while cap.isOpened():
     frame_idx += 1
     temps_actuel = time.time()
 
-    # 1. Détection de la Balle et de la Raquette (YOLO Object)
     results_obj = model_obj(frame, verbose=False, conf=0.3)[0]
     
     ball_box_for_logic = None
@@ -74,7 +73,7 @@ while cap.isOpened():
             cv2.rectangle(frame, (coords[0], coords[1]), (coords[2], coords[3]), (0, 0, 255), 2)
             cv2.putText(frame, "Raquette", (coords[0], coords[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
-    # 2. Détection de l'impact (Logique uniquement)
+    # Détection de l'impact
     if ball_box_for_logic is not None and racket_box_for_logic is not None:
         if boxes_intersect(ball_box_for_logic, racket_box_for_logic):
             
@@ -110,7 +109,6 @@ while cap.isOpened():
                     print(f"[Frame {frame_idx}] ⚠️ Faux Positif : {coup_formate} détecté hors de tout intervalle !")
                     metrics["faux_positif"] += 1
 
-    # 3. AFFICHAGE PERSISTANT DU TEXTE
     if temps_actuel < affichage_expiration:
         cv2.putText(frame, f"IMPACT : {dernier_coup}", (50, 80), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
