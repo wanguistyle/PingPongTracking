@@ -12,7 +12,7 @@ Ping Pong AI Analyst is a computer vision-based tool designed to track table ten
 
 ## Project Structure
 
-Based on the core files, the project is structured as follows:
+Based on the core files, the project is structured as follows on the `main` branch:
 
 * **`main.py`**: The primary evaluation script configured for the live stream. It live processes the AI logic.
 * **`main_video.py`**: An alternate evaluation script configured for the dataset. Similar to `main.py` but includes different metric calculations (Precision/Recall vs. general Accuracy).
@@ -24,6 +24,15 @@ Other utils are used to explore more solutions.
 * **`data/`** : Expected to contain the video files (`.mp4`) and their corresponding annotation files (`.csv`). Has to be added from the exterior.
 * **`tests/`**: A place where to practice on new codes and technologies before puting it or not in utils
 * **`color_evaluation/`**: Test on colorimetry on the ball and table
+
+On the `philo` branch:
+
+* **`roboflow/`**: A place where to enjoy the YOLO codes.
+* **`metrics.ipynb`**: A notebook where the ball metrics were made.
+
+On the `basic-tracking` branch:
+* **`basic_tracking.py`**: The first code that was written.
+
 
 ## Prerequisites & Installation
 
